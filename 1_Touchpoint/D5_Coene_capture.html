@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Canopy · Core touchpoint · Drone show prototype</title>
+<style>
+  :root { --main:#dcbf91; --accent:#871811; --bg:#280000; --text:#ffffff; }
+  * { box-sizing:border-box; margin:0; }
+  html, body { height:100%; background:var(--bg); overflow:hidden; font-family:"Abadi MT Std","Abadi",system-ui,sans-serif; }
+  canvas { display:block; width:100%; height:100%; }
+  #sub { position:fixed; left:0; right:0; bottom:7%; text-align:center; color:var(--text);
+         font-size:clamp(16px,2.2vw,28px); text-shadow:0 2px 8px #000; padding:0 6%; transition:opacity .6s; opacity:0; }
+  #hud { position:fixed; top:14px; left:16px; right:16px; display:flex; justify-content:space-between; gap:12px;
+         color:var(--main); font-size:13px; opacity:.85; }
+  button { background:var(--main); color:var(--bg); border:0; border-radius:6px; padding:8px 14px; font:inherit; font-weight:700; cursor:pointer; }
+  button:focus-visible { outline:3px solid var(--text); outline-offset:2px; }
+</style>
+</head>
+<body>
+<canvas id="c" aria-label="Drone show spelling CANOPY seen through a bedroom window at night"></canvas>
+<div id="hud"><span>Canopy · Mark's window · 16 June 2027, 23:00</span>
+  <span><button id="replay">Replay</button> <button id="subs">Subtitles: on</button></span></div>
+<div id="sub" role="status" aria-live="polite"></div>
+<script>
+const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+const subEl = document.getElementById('sub');
+let W, H, stars = [], drones = [], t0 = performance.now(), subsOn = true;
+const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+// Timeline (seconds): drift 0-4, form 4-12, hold 12-26, tagline 18-26, disperse 26-32
+const SUBS = [
+  [0.5, 'Mark is gaming. Another night of pressure.'],
+  [4.5, 'Outside his window, lights start to move.'],
+  [12.5, 'They spell a name: CANOPY.'],
+  [18, 'Get lost on purpose.'],
+  [24, 'Canopy festival · 16–26 June 2027'],
+  [27, '']
+];
+const ease = x => x<.5 ? 2*x*x : 1-Math.pow(-2*x+2,2)/2;
+
+function targets(n){
+  // sample the word CANOPY from an offscreen canvas
+  const o = document.createElement('canvas'); o.width = 600; o.height = 120;
+  const g = o.getContext('2d'); g.fillStyle = '#fff'; g.textAlign='center'; g.textBaseline='middle';
+  g.font = '900 110px "Arial Black",Impact,sans-serif'; g.fillText('CANOPY',300,62);
+  const d = g.getImageData(0,0,600,120).data, pts = [];
+  for (let y=0;y<120;y+=9) for (let x=0;x<600;x+=9) if (d[(y*600+x)*4+3]>128) pts.push([x/600,y/120]);
+  return pts;
+}
+function setup(){
+  W = cv.width = innerWidth*devicePixelRatio; H = cv.height = innerHeight*devicePixelRatio;
+  stars = Array.from({length:380},()=>({x:Math.random()*W,y:Math.random()*H*.78,r:Math.random()*1.6*devicePixelRatio+.3,a:Math.random()*.7+.2}));
+  const pts = targets(); const bw = Math.min(W*.62, H*.6*5), bh = bw/5;
+  const cx = W*.5, cy = H*.34;
+  drones = pts.map(([px,py])=>({
+    sx:Math.random()*W, sy:H*.05+Math.random()*H*.6,
+    tx:cx-bw/2+px*bw, ty:cy-bh/2+py*bh, ph:Math.random()*6.28 }));
+}
+function room(){
+  // window frame + desk and monitor glow in the brand's dark red / sand
+  ctx.fillStyle = '#280000'; const f = W*.035;
+  ctx.fillRect(0,0,W,f*.6); ctx.fillRect(0,0,f,H); ctx.fillRect(W-f,0,f,H);
+  ctx.fillRect(0,H*.8,W,H*.2); ctx.fillRect(W/2-f/4,0,f/2,H*.8);
+  const gl = ctx.createRadialGradient(W*.5,H*.9,10,W*.5,H*.9,W*.3);
+  gl.addColorStop(0,'rgba(220,191,145,.45)'); gl.addColorStop(1,'rgba(220,191,145,0)');
+  ctx.fillStyle = gl; ctx.fillRect(0,H*.6,W,H*.4);
+  ctx.fillStyle = '#1a0000'; ctx.fillRect(W*.38,H*.82,W*.24,H*.14);       // monitor back
+  ctx.fillStyle = '#dcbf91'; ctx.fillRect(W*.395,H*.835,W*.21,H*.1);      // screen glow
+}
+function drone(x,y,s,a){
+  ctx.globalAlpha = a; ctx.fillStyle='#fff'; ctx.shadowColor='#fff'; ctx.shadowBlur=8*devicePixelRatio;
+  ctx.beginPath(); ctx.ellipse(x,y,s*.5,s*.8,0,0,6.28); ctx.fill(); ctx.shadowBlur=0;
+  ctx.strokeStyle='#000'; ctx.lineWidth=Math.max(1,s*.25); ctx.beginPath();
+  ctx.moveTo(x-s,y-s*.9); ctx.lineTo(x-s*.4,y-s*.3); ctx.moveTo(x+s,y-s*.9); ctx.lineTo(x+s*.4,y-s*.3);
+  ctx.moveTo(x-s,y+s*.9); ctx.lineTo(x-s*.4,y+s*.3); ctx.moveTo(x+s,y+s*.9); ctx.lineTo(x+s*.4,y+s*.3); ctx.stroke();
+  ctx.globalAlpha = 1;
+}
+function frame(now){
+  const t = Math.max(0,(now-t0)/1000) % 34;
+  ctx.fillStyle = '#1c1f22'; ctx.fillRect(0,0,W,H);
+  for (const s of stars){ ctx.globalAlpha=s.a; ctx.fillStyle='#cfd8e0'; ctx.fillRect(s.x,s.y,s.r,s.r); } ctx.globalAlpha=1;
+  const form = ease(Math.min(1,Math.max(0,(t-4)/8)));
+  const out  = ease(Math.min(1,Math.max(0,(t-26)/6)));
+  const s = 4.2*devicePixelRatio;
+  for (const d of drones){
+    const drift = Math.sin(t*.8+d.ph)*12*devicePixelRatio;
+    let x = d.sx + drift, y = d.sy + Math.cos(t*.6+d.ph)*8*devicePixelRatio;
+    x += (d.tx-x)*form; y += (d.ty-y)*form;
+    if (form>=1){ x += Math.sin(t*2+d.ph)*1.2*devicePixelRatio; y += Math.cos(t*1.7+d.ph)*1.2*devicePixelRatio; }
+    x += (d.sx+W*.2-x)*out*.5; y += (-H*.2-y)*out;
+    drone(x,y,s,1-out*.9);
+  }
+  room();
+  // subtitles for the capture video
+  let line=''; for (const [ts,txt] of SUBS) if (t>=ts) line=txt;
+  subEl.textContent = line; subEl.style.opacity = subsOn && line ? 1 : 0;
+  requestAnimationFrame(frame);
+}
+document.getElementById('replay').onclick = ()=>{ t0 = performance.now(); };
+document.getElementById('subs').onclick = e=>{ subsOn=!subsOn; e.target.textContent='Subtitles: '+(subsOn?'on':'off'); };
+addEventListener('resize', setup); setup(); requestAnimationFrame(frame);
+</script>
+</body>
+</html>
